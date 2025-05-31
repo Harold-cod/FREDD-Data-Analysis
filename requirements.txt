@@ -1,0 +1,7 @@
+pandas
+matplotlib
+ipykernel
+seaborn
+plotly
+streamlit
+quarto
