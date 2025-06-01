@@ -1,0 +1,2649 @@
+---
+title: Analyse des données cliniques et génétiques <br>- Projet FREDD
+author: Harold Kouekam Siewe
+date: today
+format:
+  html:
+    toc: true
+    toc-title: Sommaire
+    toc-depth: 3
+    code-fold: true
+    code-tools: true
+    theme: cosmo
+  pdf:
+    toc: true
+    number-sections: true
+lang: fr
+editor: visual
+jupyter: python3
+---
+
+
+# Introduction
+
+Les maladies rares, notamment celles touchant la vision, représentent un défi médical. Ce rapport présente les étapes de traitement, d’analyse et de visualisation des données du projet FREDD, dans le cadre d’un stage d’analyse de données en santé.
+
+# Objectifs
+
+- Évaluer la qualité des données issues de deux centres pilotes.
+- Identifier incohérences, champs manquants et divergences de codification.
+- Proposer des visualisations interactives via Streamlit.
+
+# Données
+
+Les fichiers proviennent de l’hôpital 15-20 (Paris) et des HUS (Strasbourg). Chaque fichier comprend plus de 500 variables de nature clinique, génétique, administrative ou d’imagerie.
+
+## 1.Glossaires des variables 
+
+```{python}
+#| ExecuteTime: {end_time: '2025-05-21T20:28:55.146926Z', start_time: '2025-05-21T20:28:54.015958Z'}
+#| editable: true
+#| slideshow: {slide_type: ''}
+#| tags: []
+import pandas as pd
+import warnings
+import plotly.io as pio
+pio.renderers.default = "browser"
+warnings.filterwarnings("ignore", category=FutureWarning)
+file_path = 'C:\\Users\\Administrateur PC\\seadrive_root\\Harold K\\Mes bibliothèques\\Ma bibliothèque\\Stage_Fredd\\description_variables.xlsx'
+variables = pd.read_excel(file_path)
+pd.set_option('display.max_rows', None)
+pd.set_option('display.max_columns', None)
+variables.head()
+```
+
+## 2.Analyse du Data frame de l'Hopital National des 15-20 de Paris - HN1520 
+
+```{python}
+#| ExecuteTime: {end_time: '2025-05-21T20:29:29.573824Z', start_time: '2025-05-21T20:29:29.338739Z'}
+import pandas as pd
+file_path = 'C:\\Users\\Administrateur PC\\seadrive_root\\Harold K\\Mes bibliothèques\\Ma bibliothèque\\Stage_Fredd\\Answers_1.csv'
+data1 = pd.read_csv(file_path, sep =';', low_memory=False,)
+data1.head()
+```
+
+### 2.1 Aperçu des données à travers une Heatmap
+
+```{python}
+#| ExecuteTime: {end_time: '2025-05-21T20:32:43.865604Z', start_time: '2025-05-21T20:32:43.407127Z'}
+import plotly.express as px
+fig = px.imshow(data1.isna(), text_auto=True)
+fig.update_layout(width=1000, height=900)
+fig.show()
+```
+
+### 2.2 Prétraitement des données
+
+```{python}
+data1.info()
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2025-05-21T20:37:55.756431Z', start_time: '2025-05-21T20:37:55.499877Z'}
+# Encodage des dates au bon format
+data1['leg_date_incFREDD'] = pd.to_datetime(data1['leg_date_incFREDD'], format='%d/%m/%Y', errors='coerce')
+data1['adm_date_naissance'] = pd.to_datetime(data1['adm_date_naissance'],format='%d/%m/%Y', errors='coerce')
+data1['diaGen_CR_date'] = pd.to_datetime(data1['diaGen_CR_date'], format='%d/%m/%Y', errors='coerce')
+data1['his_date_MR'] = pd.to_datetime(data1['his_date_MR'], format='%d/%m/%Y', errors='coerce')
+data1['exaAcu_date'] = pd.to_datetime(data1['exaAcu_date'], format='%d/%m/%Y', errors='coerce')
+data1['exaChv_date'] = pd.to_datetime(data1['exaChv_date'], format='%d/%m/%Y', errors='coerce')
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2025-05-21T20:38:05.575432Z', start_time: '2025-05-21T20:38:05.512764Z'}
+# Age en année à l'inclusion dans FREDD
+data1['leg_age_patientFREDD'] = (data1['leg_date_incFREDD'] - data1['adm_date_naissance']).dt.days / 365.25
+
+# Age au moment du dernier compte rendu génétique (juste patients ayant statut confirmé)
+data1['age_diagnostic'] = (data1['diaGen_CR_date'] - data1['adm_date_naissance']).dt.days / 365.25
+```
+
+### 2.3 Aperçu des données administratives des patients
+
+```{python}
+import plotly.express as px
+
+fig = px.histogram(
+    data1,
+    x="leg_age_patientFREDD",
+    nbins=20,  
+    title='<b>Nombre de personnes par âge',
+    histfunc="count",
+    labels={"leg_age_patientFREDD": "Âge", "count": "Nombre de personnes"},
+)
+fig.update_traces(
+    texttemplate='%{y}',  
+    textposition='outside'
+)
+fig.update_layout(
+    xaxis_title="Âge",
+    yaxis_title="Nombre de personnes",
+    title_font_size=22
+)
+
+fig.show()
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2025-05-20T15:16:29.251828Z', start_time: '2025-05-20T15:16:29.199099Z'}
+# Moyenne d'age des patients 
+mean_age = data1['leg_age_patientFREDD'].mean().round(0)
+print("Moyenne d'age:", mean_age, "ans")
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2025-05-21T20:21:03.684429Z', start_time: '2025-05-21T20:21:03.336890Z'}
+proportions = data1['adm_occupation'].value_counts(dropna=False).reset_index()
+proportions.columns = ['adm_occupation', 'proportion']
+totals_counts = proportions['proportion'].sum()
+proportions['Percentage'] = (proportions['proportion'] / totals_counts * 100).round(1)
+
+proportions['adm_occupation'] = proportions['adm_occupation'].astype(str)
+proportions['label'] = proportions['adm_occupation'].replace({'1.0': 'Salarié', 
+                                                              '2.0': 'Retraité',
+                                                              '3.0': 'Sans emploi',
+                                                              '4.0': 'Etudiant',
+                                                              '5.0': 'Non applcable(enfant)',
+                                                              '6.0': 'Inconnu'})
+
+fig = px.pie(
+        proportions,
+        names='label',
+        values='proportion',
+        title=f" <b>Occupation des patients</b>",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+fig.update_layout(
+    width=850,  
+    height=450,  
+    margin=dict(t=50, b=50, l=50, r=50)
+)
+fig.show()
+```
+
+```{python}
+proportions = data1['adm_sexe'].value_counts(dropna=False).reset_index()
+proportions.columns = ['adm_sexe', 'proportion']
+totals_counts = proportions['proportion'].sum()
+proportions['Percentage'] = (proportions['proportion'] / totals_counts * 100).round(1)
+
+proportions['adm_sexe'] = proportions['adm_sexe'].astype(str)
+proportions['label'] = proportions['adm_sexe'].replace({'1': 'Male', '2': 'Female'})
+
+fig = px.pie(
+        proportions,
+        names='label',
+        values='proportion',
+        title=f" <b>Sexe des patients",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+fig.update_layout(
+    width=850,  
+    height=450,  
+    margin=dict(t=50, b=50, l=50, r=50)
+)
+fig.show()
+```
+
+### 2.4 Periode des premiers signes de la maladie
+
+```{python}
+counts = data1['his_age_psignes'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+totals_counts = counts['count'].sum()
+counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+counts['category'] = counts['category'].astype(str)
+counts['label'] = counts['category'].replace({'1': 'Anténatal',  
+                                              '2': 'A la naissance', 
+                                              '3': 'Post natal',
+                                              '4': 'Non déterminé'})
+
+
+fig = px.pie(
+        counts,
+        names='label',
+        values='count',
+        title=f"<b>Periode des premiers signes de la maladie ",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='auto', textinfo='percent+label+value')
+
+fig.show()
+```
+
+### 2.5 Statut du diagnostique clinique
+
+```{python}
+#| ExecuteTime: {end_time: '2025-05-21T20:20:53.686903Z', start_time: '2025-05-21T20:20:53.424446Z'}
+counts = data1['diaCli_stat_diag'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+totals_counts = counts['count'].sum()
+counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+counts['category'] = counts['category'].astype(str)
+counts['label'] = counts['category'].replace({'1': 'En cours' , '2': 'Probable', 
+                                             '3': 'Confirmé', '4': 'Indéterminé'})
+
+
+fig = px.pie(
+        counts,
+        names='label',
+        values='count',
+        title=f"<b>Statut diagnostic clinique des patients</b>",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+fig.update_layout(
+    width=850,  
+    height=450,  
+    margin=dict(t=50, b=50, l=50, r=50)
+)
+fig.show()
+```
+
+```{python}
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import plotly.express as px
+
+counts = data1['diaCli_stat_diag'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+total = counts['count'].sum()
+
+counts['category'] = counts['category'].astype(str)
+counts['label'] = counts['category'].replace({
+    '1': 'En cours',
+    '2': 'Probable',
+    '3': 'Confirmé',
+    '4': 'Indéterminé'
+})
+
+confirmed = counts[counts['label'] == 'Confirmé']['count'].values[0] if 'Confirmé' in counts['label'].values else 0
+probable = counts[counts['label'] == 'Probable']['count'].values[0] if 'Probable' in counts['label'].values else 0
+combined = confirmed + probable
+other = total - combined
+
+summary_labels = ['Confirmé + Probable', 'Autres']
+summary_values = [combined, other]
+
+fig = make_subplots(
+    rows=1, cols=2,
+    specs=[[{'type': 'domain'}, {'type': 'domain'}]],
+    subplot_titles=[
+        "<b>Statut diagnostic clinique",
+        "<b>Confirmé + Probable vs Autres"
+    ]
+)
+
+# ---- Premier camembert : tous les statuts
+fig.add_trace(go.Pie(
+    labels=counts['label'],
+    values=counts['count'],
+    textinfo='percent+label+value',
+    name="Tous les statuts",
+    marker=dict(colors=px.colors.qualitative.Bold)
+), row=1, col=1)
+
+# ---- Deuxième camembert : Confirmé + Probable vs Autres
+fig.add_trace(go.Pie(
+    labels=summary_labels,
+    values=summary_values,
+    textinfo='percent+label+value',
+    name="Regroupé",
+    marker=dict(colors=['green', 'lightgray'])
+), row=1, col=2)
+
+# ---- Mise en forme
+fig.update_layout(
+    # title_text="<b>Répartition des statuts cliniques</b>",
+    height=450,
+    width=850,
+    margin=dict(t=60, b=20, l=40, r=40)
+)
+
+fig.show()
+```
+
+#### 2.5.1 Maladies répertoriées après le diagnostic clinique
+
+```{python}
+print(data1['diaCli_diagMR_nom'].value_counts().sum(), "Maladies patients ayant une maladie repertoriée")
+```
+
+```{python}
+import plotly.express as px
+import pandas as pd
+
+diagnosis_counts = data1['diaCli_diagMR_nom'].value_counts(dropna=False).reset_index()
+diagnosis_counts.columns = ['Diagnosis', 'Number of cases']
+
+diagnosis_counts['Diagnosis'] = diagnosis_counts['Diagnosis'].fillna('Missing')
+
+
+total_cases = diagnosis_counts['Number of cases'].sum()
+diagnosis_counts['Percentage'] = (diagnosis_counts['Number of cases'] / total_cases * 100).round(1)
+
+fig = px.bar(
+    diagnosis_counts,
+    y='Diagnosis',
+    x='Number of cases',
+    color='Number of cases',
+    orientation='h',
+    color_continuous_scale='Plasma',
+    text='Number of cases',
+    title='<b>Répartition des maladies selon le diagnostic clinique</b>',
+    labels={'Number of cases': 'Nb cas', 'Diagnosis': 'Maladies'},
+    height=900
+)
+
+fig.update_layout(
+    yaxis={'categoryorder':'total ascending'}, 
+    plot_bgcolor='rgba(0,0,0,0)',
+    hovermode='y unified',
+    title_font={'size': 20},
+    uniformtext_minsize=8,
+    margin=dict(r=150),
+    bargap=0.1
+
+)
+
+fig.update_traces(
+    texttemplate='<b>%{x}</b><br>(%{customdata[0]}%)',
+    hovertemplate="<b>%{y}</b><br>Cases: %{x}<br>Proportion: %{customdata[0]}%",
+    textposition='auto',
+    customdata=diagnosis_counts[['Percentage']]
+)
+
+fig.show()
+```
+
+```{python}
+diagnosis_counts = data1['diaCli_diagMR_nom'].value_counts(dropna=False).reset_index()
+diagnosis_counts.columns = ['Diagnosis', 'Number of cases']
+
+diagnosis_counts['Diagnosis'] = diagnosis_counts['Diagnosis'].fillna('Missing')
+
+# Regrouper les maladies avec moins de 10 cas
+def aggregate_less_than_10(df):
+    less_than_10 = df[df['Number of cases'] < 10]
+    sum_less_than_10 = less_than_10['Number of cases'].sum()
+    more_or_equal_10 = df[df['Number of cases'] >= 10]
+    # Ajouter la catégorie "<10 maladies" si nécessaire
+    if sum_less_than_10 > 0:
+        new_row = pd.DataFrame({'Diagnosis': ['<10 maladies'], 'Number of cases': [sum_less_than_10]})
+        new_df = pd.concat([more_or_equal_10, new_row], ignore_index=True)
+    else:
+        new_df = more_or_equal_10.copy()
+    # Recalculer les pourcentages
+    total_cases = new_df['Number of cases'].sum()
+    new_df['Percentage'] = (new_df['Number of cases'] / total_cases * 100).round(1)
+    return new_df
+
+diagnosis_counts_agg = aggregate_less_than_10(diagnosis_counts)
+
+# Création du camembert
+fig = px.pie(
+    diagnosis_counts_agg,
+    names='Diagnosis',
+    values='Number of cases',
+    title="<b>Répartition des maladies selon le diagnostic clinique (cas < 10 regroupés)</b>",
+    color_discrete_sequence=px.colors.qualitative.Bold
+)
+fig.update_traces(textposition='inside', textinfo='label+value+percent')
+fig.update_layout(
+    width=850,
+    height=450,
+    margin=dict(t=50, b=50, l=50, r=50)
+)
+fig.show()
+
+```
+
+#### 2.5.2 Patients n'ayant pas de maladie rare répertorié avec le statut diagnostic clinique confirmé
+
+```{python}
+df_tableau = data1[(data1['diaCli_diagMR_nom'].isna()) & (data1['diaCli_stat_diag'] != 4) & (data1['diaCli_diagMR_code'].isna())][
+['adm_date_naissance', 'diaCli_stat_diag', 'diaCli_diagMR_nom', 'diaCli_diagMR_code']]
+```
+
+```{python}
+import plotly.graph_objects as go
+
+row_height = 26
+table_height = len(df_tableau) * row_height + 60
+
+fig = go.Figure(data=[go.Table(
+    header=dict(
+        values=list(df_tableau.columns),  
+        line_color='darkslategray',
+        fill_color='lightskyblue',
+        align='center'
+    ),
+    cells=dict(
+        values=[df_tableau[col] for col in df_tableau.columns], 
+        line_color='darkslategray',
+        fill_color='lightcyan',
+        align='left'
+    ))
+])
+fig.update_layout(
+    title=dict(
+        text="<b>Patients n'ayant pas de MR avec le statut confirmé </b>", 
+        font=dict(size=20),  
+        x=0.5  
+    ),
+    width=800, 
+    height=table_height  
+)
+
+fig.show()
+```
+
+#### 2.5.3 Nombre de personnes ayant eu des signes cliniques
+
+```{python}
+counts = data1['diaCli_signes_assBoo'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+totals_counts = counts['count'].sum()
+counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+counts['category'] = counts['category'].astype(str)
+counts['label'] = counts['category'].replace({'True': 'Vrai' , 'False': 'Faux'})
+
+fig = px.pie(
+        counts,
+        names='label',
+        values='count',
+        title=f"<b>Patients avec des signes cliniques",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+
+fig.show()
+```
+
+#### 2.5.4 Proportion des patients ayant des signes cliniques associées aux maladies
+
+```{python}
+import plotly.express as px
+
+variables = [
+    ('diaCli_signes_ass1'),
+    ('diaCli_signes_ass2'),
+    ('diaCli_signes_ass3'),
+    ('diaCli_signes_ass4'),
+    ('diaCli_signes_ass5'),
+    ('diaCli_signes_ass6'),
+    ('diaCli_signes_ass7'),
+    ('diaCli_signes_ass8'),
+    ('diaCli_signes_ass9'),
+    ('diaCli_signes_ass10')
+]
+
+for col in variables:
+    counts = data1[col].value_counts(dropna=False).reset_index()
+    counts.columns = ['category', 'count']
+    totals_counts = counts['count'].sum()
+    counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+    counts['category'] = counts['category'].astype(str)
+    fig = px.bar(
+    counts,
+    x='category',
+    y='count',
+    color='count',
+    color_continuous_scale='Plasma',
+    text='count',
+    title=f"<b>Proportion de {col}",
+    labels={'count': 'Nb patients', 'category': ''},
+    height=900
+    )
+
+    fig.update_layout(
+    xaxis={'categoryorder':'total descending'},
+    plot_bgcolor='rgba(0,0,0,0)',
+    hovermode='x unified',
+    title_font={'size': 20},
+    uniformtext_minsize=8
+    )
+
+    fig.update_traces(
+    texttemplate='<b>%{y}</b><br>(%{customdata[0]}%)',
+    hovertemplate="<b>%{x}</b><br>Patients: %{y}<br>Proportion: %{customdata[0]}%",
+    textposition='auto',
+    customdata=counts[['Percentage']]
+    )
+
+    fig.show()
+```
+
+```{python}
+import pandas as pd
+from upsetplot import UpSet, from_indicators # type: ignore
+import matplotlib.pyplot as plt
+
+# Liste des colonnes représentant les signes cliniques
+variables = [
+    'diaCli_signes_ass1', 'diaCli_signes_ass2', 'diaCli_signes_ass3',
+    'diaCli_signes_ass4', 'diaCli_signes_ass5',
+    'diaCli_signes_ass6', 'diaCli_signes_ass7', 'diaCli_signes_ass8',
+    'diaCli_signes_ass9', 'diaCli_signes_ass10'
+]
+df = data1[variables].copy()
+
+df= df.fillna('missing')
+# data1[col] = data1[col].fillna('missing')  
+
+# On extrait tous les signes cliniques uniques (hors 'missing')
+unique_signs = pd.unique(df.values.ravel())
+unique_signs = [sign for sign in unique_signs if sign != 'missing']
+
+# Création d'un DataFrame binaire : chaque signe devient une colonne
+binary_df = pd.DataFrame(False, index=df.index, columns=unique_signs)
+
+# On remplit le DataFrame : True si le patient présente le signe
+for sign in unique_signs:
+    binary_df[sign] = df.apply(lambda row: sign in row.values, axis=1)
+
+# Création des données pour l'UpSet plot
+upset_data = from_indicators(binary_df.columns, binary_df)
+
+# Affichage
+plt.figure(figsize=(14, 8))
+upset = UpSet(upset_data, subset_size='count', show_counts=True)
+upset.plot()
+plt.suptitle("Co-occurrence des signes cliniques chez les patients")
+# plt.tight_layout()
+plt.show()
+```
+
+#### 2.5.5 Investigations réalisées sur le patient 
+
+```{python}
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+variables = [            
+    'diaCli_invesCli', 'diaCli_invesBio', 'diaCli_invesBiol', 'diaCli_invesIma',
+    'diaCli_invesExp', 'diaCli_invesAna', 'diaCli_invesGen', 'diaCli_invesERG', 'diaCli_invesAut'
+]
+
+fig = make_subplots(
+    rows=3, cols=3,
+    subplot_titles=variables,
+    specs=[[{"type": "domain"}]*3]*3
+)
+
+couleurs = {
+    '1': 'green',
+    '2': 'firebrick',
+    'nan': 'lightgrey',
+    'Genetic test' : 'royalblue',
+    'test de performance' : 'yellow',
+}
+
+for i, col in enumerate(variables):
+    counts = data1[col].value_counts(dropna=False).reset_index()
+    counts.columns = ['category', 'count']
+    totals_counts = counts['count'].sum()
+    counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+    counts['category'] = counts['category'].astype(str)
+    counts['label'] = counts['category'].replace({'1': 'Oui', '2': 'Non', 'nan': 'Inconnu'})
+
+
+    pie = go.Pie(
+        labels=counts['label'],
+        values=counts['count'],
+        marker_colors=[couleurs.get(x, 'grey') for x in counts['category']],
+        textinfo='percent+label+value',
+        showlegend=False  
+    )
+
+    row = i // 3 + 1
+    col_idx = i % 3 + 1
+    fig.add_trace(pie, row=row, col=col_idx)
+
+fig.update_layout(
+    height=700, width=800,
+    title_text="<b>Investigations réalisées"
+)
+fig.show()
+```
+
+### 2.6 Informations du test génétique
+
+#### 2.6.1 Listes des techniques pour le test génétique
+
+```{python}
+data1['diaGen_liste_tec'].unique()
+```
+
+```{python}
+counts = data1['diaGen_liste_tec'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+totals_counts = counts['count'].sum()
+counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+counts['category'] = counts['category'].astype(str)
+counts['label'] = counts['category'].replace({'1.0': 'Séquençage SANGER simple', 
+                                              '2.0': 'Séquençage ciblé avec panel de 10-30 gènes', 
+                                              '5.0': 'PCR Quantitative', 
+                                              '6.0': 'Séquençage exome entier (WES)',
+                                              '7.0': 'Séquençage génome entier (WGS)', 
+                                              '9.0': 'Others',
+                                              'nan': 'Unknown'})
+
+
+fig = px.pie(
+        counts,
+        names='label',
+        values='count',
+        title=f"<b>Methodes utilisées pour le test génétique",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+fig.update_layout(
+    width=850,  
+    height=450,  
+    margin=dict(t=50, b=50, l=50, r=50)
+)
+fig.show()
+```
+
+#### 2.6.2 Statut du dernier test génétique
+
+```{python}
+counts = data1['diaGen_statut_analyse'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+totals_counts = counts['count'].sum()
+counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+counts['category'] = counts['category'].astype(str)
+counts['label'] = counts['category'].replace({'1': 'En cours', 
+                                              '2': 'Terminé',
+                                              '3': 'Inconnu'
+                                             })
+
+
+fig = px.pie(
+        counts,
+        names='label',
+        values='count',
+        title=f"<b>Statut du dernier test génétique<b>",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+fig.update_layout(
+    width=850,  
+    height=450,  
+    margin=dict(t=50, b=50, l=50, r=50)
+)
+fig.show()
+```
+
+#### 2.6.3 Analyse des patients n'ayant pas de date du test génétique
+
+```{python}
+print(data1['diaGen_CR_date'].value_counts().sum(), "dates présentes")
+```
+
+```{python}
+data1[(data1['diaGen_CR_date'].isna()) & (data1['diaGen_statut_analyse'] == 2)][
+['adm_date_naissance', 'diaGen_statut_analyse', 'diaGen_CR_date','diaGen_caract', 'diaGen_var_hgcn_1']].head(10)
+```
+
+#### 2.6.4 Patients n'ayant pas de Caractérisation du dernier test génétique
+
+```{python}
+data_car = data1[(data1['diaGen_caract'].isna()) & (data1['diaGen_statut_analyse'] == 2)][
+['adm_date_naissance', 'diaGen_statut_analyse', 'diaGen_caract', 'diaGen_var_hgcn_1']]
+data_car
+```
+
+```{python}
+counts = data1['diaGen_caract'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+totals_counts = counts['count'].sum()
+counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+counts['category'] = counts['category'].astype(str)
+
+fig = px.pie(
+        counts,
+        names='category',
+        values='count',
+        title=f"<b>Caractérisation du dernier test génétique<b>",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+fig.update_layout(
+    width=850,  
+    height=450,  
+    margin=dict(t=50, b=50, l=50, r=50)
+)
+fig.show()
+```
+
+```{python}
+data1["diaGen_caract"].value_counts()
+```
+
+##### Pas cohérent avec le statut du dernier test 
+
+#### 2.6.5 Nombre de Gène porteur par patient
+
+```{python}
+data1["diaGen_var_nbgene"].value_counts()
+```
+
+```{python}
+counts = data1['diaGen_var_nbgene'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+totals_counts = counts['count'].sum()
+counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+counts['category'] = counts['category'].astype(str)
+counts['label'] = counts['category'].replace({'0' : '0 gene', '1' : '1 gene', '2' : '2 gene'})
+
+fig = px.pie(
+        counts,
+        names='label',
+        values='count',
+        title=f"<b>Nombre de patient porteur de 0, 1, 2 génes",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='auto', textinfo='percent+label+value')
+fig.update_layout(
+    width=850,  
+    height=450,  
+    margin=dict(t=50, b=50, l=50, r=50)
+)
+fig.show()
+```
+
+#### 2.6.6 Patients ayant 2 gènes 
+
+```{python}
+#| scrolled: true
+data1[data1["diaGen_var_nbgene"] == 2][["adm_date_naissance", "diaGen_var_hgcn_1", "diaGen_var_hgcn_2"]]
+```
+
+#### 2.6.7 Listes des Gènes repertoriés 
+
+```{python}
+import plotly.express as px
+import pandas as pd
+
+diagnosis_counts = data1['diaGen_var_hgcn_1'].value_counts(dropna=False).reset_index()
+diagnosis_counts.columns = ['Diagnosis', 'Number of cases']
+
+diagnosis_counts['Diagnosis'] = diagnosis_counts['Diagnosis'].fillna('Missing')
+
+
+total_cases = diagnosis_counts['Number of cases'].sum()
+diagnosis_counts['Percentage'] = (diagnosis_counts['Number of cases'] / total_cases * 100).round(1)
+
+fig = px.bar(
+    diagnosis_counts,
+    y='Diagnosis',
+    x='Number of cases',
+    color='Number of cases',
+    orientation='h',
+    color_continuous_scale='Plasma',
+    text='Number of cases',
+    title='<b>Répartition des gènes selon le test clinique</b>',
+    labels={'Number of cases': 'Nb cases', 'Diagnosis': 'Genes'},
+    height=900
+)
+
+fig.update_layout(
+    yaxis={'categoryorder':'total ascending'}, 
+    plot_bgcolor='rgba(0,0,0,0)',
+    hovermode='y unified',
+    title_font={'size': 20},
+    uniformtext_minsize=20
+
+)
+
+fig.update_traces(
+    texttemplate='<b>%{x}</b><br>(%{customdata[0]}%)',
+    hovertemplate="<b>%{y}</b><br>Cases: %{x}<br>Proportion: %{customdata[0]}%",
+    textposition='auto',
+    customdata=diagnosis_counts[['Percentage']],
+    textfont_size=30,
+)
+
+fig.show()
+```
+
+#### 2.6.8 Méthodes de transmission de gènes
+
+```{python}
+counts = data1['diaGen_var_trans_1'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+totals_counts = counts['count'].sum()
+counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+counts['category'] = counts['category'].astype(str)
+counts['label'] = counts['category'].replace({'1.0': 'De novo', '2.0': 'Autosomique dominant', 
+                                              '3.0': 'Autosomique récessif', 'nan': 'Unknown'})
+
+
+fig = px.pie(
+        counts,
+        names='label',
+        values='count',
+        title=f"<b>Méthodes de transmission",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+fig.update_layout(
+    width=850,  
+    height=450,  
+    margin=dict(t=50, b=50, l=50, r=50)
+)
+fig.show()
+```
+
+### 2.7 Correlation genotype/ phenotype
+
+```{python}
+counts = data1['diaGen_corr'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+totals_counts = counts['count'].sum()
+counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+counts['category'] = counts['category'].astype(str)
+counts['label'] = counts['category'].replace({'1.0': 'Yes(cas classique)',  
+                                              '0.0': 'No(cas atypique) ', 
+                                              'nan': 'Inconnu'})
+
+
+fig = px.pie(
+        counts,
+        names='label',
+        values='count',
+        title=f"<b>Correlation Genotype/Phenotype",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+fig.update_layout(
+    width=850,  
+    height=450,  
+    margin=dict(t=50, b=50, l=50, r=50)
+)
+fig.show()
+```
+
+```{python}
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+pivot = data1.pivot_table(
+    index='diaCli_diagMR_nom',
+    columns='diaGen_var_hgcn_1',
+    aggfunc='size',
+    fill_value=0
+)
+
+plt.figure(figsize=(18, 10))
+sns.heatmap(pivot, cmap='YlGnBu', annot=True, fmt="d")
+plt.title("Fréquence des combinaisons Diagnostic - Gène")
+plt.ylabel("Diagnostic")
+plt.xlabel("Gène identifié")
+plt.tight_layout()
+plt.show()
+```
+
+### 2.8 Examen Acuité visuelle 
+
+```{python}
+data1["exaAcu_type_examen_OG"].unique()
+```
+
+```{python}
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+variables = ['exaAcu_type_examen_OG', 'exaAcu_type_examen_OD']
+
+fig = make_subplots(
+    rows=1, cols=2,
+    subplot_titles=variables,
+    specs=[[{'type': 'domain'}, {'type': 'domain'}]]
+)
+
+for i, col in enumerate(variables):
+    counts = data1[col].value_counts(dropna=False).reset_index()
+    counts.columns = ['category', 'count']
+    totals_counts = counts['count'].sum()
+    counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+    counts['category'] = counts['category'].astype(str)
+    counts['label'] = counts['category'].replace({'1.0': 'Monoyer', '2.0': 'Pigassou',
+                                                  '3.0': 'Bébé vision', '4.0': 'Cardiff',
+                                                 '5.0': 'EDTRS','6.0' : 'Autre'})
+    pie = go.Pie(
+        labels=counts['label'],
+        values=counts['count'],
+        textinfo='percent+label',
+        showlegend=False  
+    )
+
+    row = 1
+    col_idx = i + 1
+    fig.add_trace(pie, row=row, col=col_idx)
+
+fig.update_layout(
+    height=450, width=850,
+    title_text="<b>Types d'examen pour la mesure de l'acuité visuelle</b>"
+)
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+
+fig.show()
+```
+
+### 2.9 Examen champ visuel
+
+```{python}
+data1['exaChv_fait'].unique()
+```
+
+```{python}
+proportions = data1['exaChv_fait'].value_counts().reset_index()
+proportions.columns = ['exaChv_fait', 'proportion']
+totals_counts = proportions['proportion'].sum()
+proportions['Percentage'] = (proportions['proportion'] / totals_counts * 100).round(1)
+
+proportions['exaChv_fait'] = proportions['exaChv_fait'].astype(str)
+proportions['label'] = proportions['exaChv_fait'].replace({'True': 'Oui', 'False': 'Non'})
+
+fig = px.pie(
+        proportions,
+        names='label',
+        values='proportion',
+        title=f"<b> Examen champ visuel réalisé",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+fig.update_layout(
+    width=850,  
+    height=450,  
+    margin=dict(t=50, b=50, l=50, r=50)
+)
+fig.show()
+```
+
+#### 2.9.1 Examen est-il interprétable ?
+
+```{python}
+data1['exaChv_interpOG'].unique()
+```
+
+```{python}
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+variables = ['exaChv_interpOG', 'exaChv_interpOD']
+
+fig = make_subplots(
+    rows=1, cols=2,
+    subplot_titles=variables,
+    specs=[[{'type': 'domain'}, {'type': 'domain'}]]
+)
+
+for i, col in enumerate(variables):
+    counts = data1[col].value_counts(dropna=False).reset_index()
+    counts.columns = ['category', 'count']
+    totals_counts = counts['count'].sum()
+    counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+    counts['category'] = counts['category'].astype(str)
+    counts['label'] = counts['category'].replace({'True': 'Oui', 'False': 'Non'})
+    pie = go.Pie(
+        labels=counts['label'],
+        values=counts['count'],
+        textinfo='percent+label',
+        showlegend=False  
+    )
+
+    row = 1
+    col_idx = i + 1
+    fig.add_trace(pie, row=row, col=col_idx)
+
+fig.update_layout(
+    height=350, width=800,
+    title_text="<b>Examen interpretable</b>"
+)
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+fig.update_layout(
+    width=850,  
+    height=450,  
+    margin=dict(t=50, b=50, l=50, r=50)
+)
+fig.show()
+```
+
+##### Incohérence avec le pourcentage d'examen réalisé
+
+#### 2.9.2 Types d'examen du champ visuel réalisé
+
+```{python}
+data1['exaChv_type'].unique()
+```
+
+```{python}
+import plotly.express as px
+import pandas as pd
+
+proportions = data1['exaChv_type'].value_counts(dropna=False).reset_index()
+proportions.columns = ['exaChv_type', 'Number of cases']
+
+proportions['exaChv_type'] = proportions['exaChv_type'].fillna('Missing')
+proportions['label'] = proportions['exaChv_type'].replace({'1': 'Champs cinétiques (Goldmann)', 
+                    '2': 'Champs statiques','3': 'Micropérimétrie', '5': 'Autre ',
+                    '1, 2, 3': 'Champs cinétiques (Goldmann)<br>Champs statiques<br>Micropérimétrie',
+                    '1, 2': 'Champs cinétiques (Goldmann)<br>Champs statiques',
+                    '1, 3': 'Champs cinétiques (Goldmann)<br>Micropérimétrie',
+                    '1, 5': 'Champs cinétiques (Goldmann)<br>Autre',
+                    '2, 5': 'Champs statiques<br>Autre'})
+                                                           
+
+total_cases = proportions['Number of cases'].sum()
+proportions['Percentage'] = (proportions['Number of cases'] / total_cases * 100).round(1)
+
+fig = px.bar(
+    proportions,
+    y='label',
+    x='Number of cases',
+    color='Number of cases',
+    orientation='h',
+    color_continuous_scale='Plasma',
+    text='Number of cases',
+    title="<b>Type d'examen champ visuel réalisé</b>",
+    labels={'Number of cases': 'Nb cases', 'exaChv_type': 'Type exam'},
+    height=900
+)
+
+fig.update_layout(
+    yaxis={'categoryorder':'total ascending'}, 
+    plot_bgcolor='rgba(0,0,0,0)',
+    hovermode='y unified',
+    title_font={'size': 20},
+    uniformtext_minsize=8
+
+)
+
+fig.update_traces(
+    texttemplate='<b>%{x}</b><br>(%{customdata[0]}%)',
+    hovertemplate="<b>%{y}</b><br>Cases: %{x}<br>Proportion: %{customdata[0]}%",
+    textposition='inside',
+    customdata=proportions[['Percentage']]
+)
+
+fig.show()
+```
+
+#### 2.9.3 Patient ayant fait l'examen, mais n'ayant pas le type d'examen réalisé
+
+```{python}
+data1[(data1["exaChv_fait"] == True) & (data1['exaChv_type'].isna())][
+                            ["leg_num_EpiGenRet", "exaChv_fait", 
+                             "adm_sexe", "exaChv_date", "exaChv_type"]]
+```
+
+#### 2.9.4 Autre Examen réalisé
+
+```{python}
+data1['exaChv_typePrec'].unique()
+```
+
+```{python}
+proportions = data1['exaChv_typePrec'].value_counts(dropna=False).reset_index()
+proportions.columns = ['exaChv_typePrec', 'proportion']
+totals_counts = proportions['proportion'].sum()
+proportions['Percentage'] = (proportions['proportion'] / totals_counts * 100).round(1)
+
+proportions['exaChv_typePrec'] = proportions['exaChv_typePrec'].astype(str)
+proportions['label'] = proportions['exaChv_typePrec'].replace({'4.0': 'Binoculaire'})
+proportions['exaChv_typePrec'] = proportions['exaChv_typePrec'].fillna('Missing')
+
+fig = px.pie(
+        proportions,
+        names='label',
+        values='proportion',
+        title=f"<b> Autre Examen champ visuel réalisé",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+fig.update_layout(
+    width=850,  
+    height=450,  
+    margin=dict(t=50, b=50, l=50, r=50)
+)
+fig.show()
+```
+
+#### 2.9.5 Examen a t'il été réalisé avec des isoptères types V4e ?"
+
+```{python}
+data1["exaChv_isoptOD"].unique()
+```
+
+```{python}
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+variables = ['exaChv_isoptOG', 'exaChv_isoptOD']
+
+fig = make_subplots(
+    rows=1, cols=2,
+    subplot_titles=variables,
+    specs=[[{'type': 'domain'}, {'type': 'domain'}]]
+)
+
+for i, col in enumerate(variables):
+    counts = data1[col].value_counts(dropna=False).reset_index()
+    counts.columns = ['category', 'count']
+    totals_counts = counts['count'].sum()
+    counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+    counts['category'] = counts['category'].astype(str)
+    counts['label'] = counts['category'].replace({'0': 'Non', '1': 'Oui'})
+    pie = go.Pie(
+        labels=counts['label'],
+        values=counts['count'],
+        showlegend=True  
+    )
+
+    row = 1
+    col_idx = i + 1
+    fig.add_trace(pie, row=row, col=col_idx)
+
+fig.update_layout(
+    width=850,  
+    height=450,  
+    margin=dict(t=50, b=50, l=50, r=50),
+    title_text="<b>Examen réalisé avec isoptères V4e</b>"
+)
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+   
+fig.show()
+```
+
+#### 2.9.6 Champ visuel central est-il compromis ?
+
+```{python}
+data1["exaChv_cen_compOG"].unique()
+```
+
+```{python}
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+variables = ['exaChv_cen_compOG', 'exaChv_cen_compOD']
+
+fig = make_subplots(
+    rows=1, cols=2,
+    subplot_titles=variables,
+    specs=[[{'type': 'domain'}, {'type': 'domain'}]]
+)
+
+couleurs = {
+    '0.0': 'red',
+    '1.0': 'green',
+}
+
+for i, col in enumerate(variables):
+    counts = data1[col].value_counts(dropna=False).reset_index()
+    counts.columns = ['category', 'count']
+    totals_counts = counts['count'].sum()
+    counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+    counts['category'] = counts['category'].astype(str)
+    counts['label'] = counts['category'].replace({'0.0': 'Non', '1.0': 'Oui'})
+    counts['label'] = counts['label'].replace('nan', 'Missing')
+
+    
+    pie = go.Pie(
+        labels=counts['label'],
+        values=counts['count'],
+        showlegend=True,
+        marker_colors=[couleurs.get(x, 'goldenrod') for x in counts['category']]
+    )
+
+    row = 1
+    col_idx = i + 1
+    fig.add_trace(pie, row=row, col=col_idx)
+
+fig.update_layout(
+    width=850,  
+    height=450,  
+    margin=dict(t=50, b=50, l=50, r=50),
+    title_text="<b>Champ visuel central compromis</b>"
+)
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+
+fig.show()
+```
+
+#### 2.9.7 Evaluation de la perte du champ visuel central
+
+```{python}
+data1["exaChv_evalPCenOD"].unique()
+```
+
+```{python}
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+variables = ['exaChv_evalPCenOG', 'exaChv_evalPCenOD']
+
+fig = make_subplots(
+    rows=1, cols=2,
+    subplot_titles=variables,
+    specs=[[{'type': 'domain'}, {'type': 'domain'}]]
+)
+
+for i, col in enumerate(variables):
+    counts = data1[col].value_counts(dropna=False).reset_index()
+    counts.columns = ['category', 'count']
+    totals_counts = counts['count'].sum()
+    counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+    counts['category'] = counts['category'].astype(str)
+    counts['label'] = counts['category'].replace({'1.0': 'Scotome central', '2.0': 'Scotome paracentral',
+                                                 '3.0': 'Scotome en arc', '4.0': 'Scotome péricentral',
+                                                 '5.0': 'Scotome annulaire', '6.0': 'Scotome centrocecal',
+                                                 '7.0': 'Baisse de la sensibilité centrale'})
+    counts['label'] = counts['label'].replace('nan', 'Missing')
+
+    
+    pie = go.Pie(
+        labels=counts['label'],
+        values=counts['count'],
+        showlegend=True  
+    )
+    row = 1
+    col_idx = i + 1
+    fig.add_trace(pie, row=row, col=col_idx)
+
+fig.update_layout(
+     width=850,  
+     height=450,  
+     margin=dict(t=50, b=50, l=50, r=50),
+     title_text="<b>Evaluation de la perte du champ visuel central</b>"
+)
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+
+fig.show()
+```
+
+#### 2.9.8 Le champ visuel périphérique est-il compromis ?
+
+```{python}
+data1["exaChv_peri_compOD"].unique()
+```
+
+```{python}
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+variables = ['exaChv_peri_compOG', 'exaChv_peri_compOD']
+
+fig = make_subplots(
+    rows=1, cols=2,
+    subplot_titles=variables,
+    specs=[[{'type': 'domain'}, {'type': 'domain'}]]
+)
+couleurs = {
+    '0': 'red', '1': 'green',
+}
+
+for i, col in enumerate(variables):
+    counts = data1[col].value_counts(dropna=False).reset_index()
+    counts.columns = ['category', 'count']
+    totals_counts = counts['count'].sum()
+    counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+    counts['category'] = counts['category'].astype(str)
+    counts['label'] = counts['category'].replace({'0': 'Non', '1': 'Oui'})
+    counts['label'] = counts['label'].replace('nan', 'Missing')
+
+    
+    pie = go.Pie(
+        labels=counts['label'],
+        values=counts['count'],
+        showlegend=True,
+        marker_colors=[couleurs.get(x, 'grey') for x in counts['category']]
+
+    )
+
+    row = 1
+    col_idx = i + 1
+    fig.add_trace(pie, row=row, col=col_idx)
+
+fig.update_layout(
+    width=850,  
+    height=450,  
+    margin=dict(t=50, b=50, l=50, r=50),
+    title_text="<b>Champ visuel périphérique compromis</b>"
+)
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+
+fig.show()
+```
+
+### 2.10 Présence ou non de la cataracte
+
+```{python}
+data1["hisPer_presence_cataOG"].unique()
+```
+
+```{python}
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+variables = ['hisPer_presence_cataOG', 'hisPer_presence_cataOD']
+
+fig = make_subplots(
+    rows=1, cols=2,
+    subplot_titles=variables,
+    specs=[[{'type': 'domain'}, {'type': 'domain'}]]
+)
+couleurs = {'0.0': 'red', '1.0': 'green', '2.0': 'blue'}
+
+for i, col in enumerate(variables):
+    counts = data1[col].value_counts(dropna=False).reset_index()
+    counts.columns = ['category', 'count']
+    totals_counts = counts['count'].sum()
+    counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+    counts['category'] = counts['category'].astype(str)
+    counts['label'] = counts['category'].replace({'0.0': 'Non', '1.0': 'Oui', 
+                                                  '2.0': 'Traitée par chirurgie'})
+    counts['label'] = counts['label'].replace('nan', 'Missing')
+
+    
+    pie = go.Pie(
+        labels=counts['label'],
+        values=counts['count'],
+        showlegend=True,
+        marker_colors=[couleurs.get(x, 'goldenrod') for x in counts['category']]
+
+    )
+
+    row = 1
+    col_idx = i + 1
+    fig.add_trace(pie, row=row, col=col_idx)
+
+fig.update_layout(
+    width=850,  
+    height=450,  
+    margin=dict(t=50, b=50, l=50, r=50),
+    title_text="<b>Présence ou non de la cataracte</b>"
+)
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+
+fig.show()
+```
+
+## 3. Analyse du Data frame des Hopitaux Universitaires de Strasbourg - HUS
+
+```{python}
+#| ExecuteTime: {end_time: '2025-05-20T11:02:16.680413Z', start_time: '2025-05-20T11:02:16.619884Z'}
+import pandas as pd
+file_path = 'C:\\Users\\Administrateur PC\\seadrive_root\\Harold K\\Mes bibliothèques\\Ma bibliothèque\\Stage_Fredd\\Answers.csv'
+data2 = pd.read_csv(file_path, sep =';', low_memory=False,)
+pd.set_option('display.max_columns', None)
+data2.head()
+```
+
+```{python}
+data2.info()
+```
+
+### 3.1 Aperçu des données à travers une Heatmap
+
+```{python}
+#| ExecuteTime: {end_time: '2025-05-20T13:14:36.515457Z', start_time: '2025-05-20T13:14:35.841539Z'}
+import plotly.express as px
+fig = px.imshow(data2.isna(), text_auto=True)
+fig.update_layout(width=1000, height=900)
+fig.show()
+```
+
+### 3.2 Prétraitement des données
+
+```{python}
+#| ExecuteTime: {end_time: '2025-05-20T15:39:42.467883Z', start_time: '2025-05-20T15:39:42.424827Z'}
+# Codage des dates 
+data2['leg_date_incFREDD'] = pd.to_datetime(data2['leg_date_incFREDD'], errors='coerce')
+data2['adm_date_naissance'] = pd.to_datetime(data2['adm_date_naissance'],errors='coerce')
+data2['diaGen_CR_date'] = pd.to_datetime(data2['diaGen_CR_date'], errors='coerce')
+data2['his_date_MR'] = pd.to_datetime(data2['his_date_MR'], errors='coerce')
+data2['exaAcu_date'] = pd.to_datetime(data2['exaAcu_date'], errors='coerce')
+data2['exaChv_date'] = pd.to_datetime(data2['exaChv_date'], errors='coerce')
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2025-05-20T15:42:45.290791Z', start_time: '2025-05-20T15:42:45.253229Z'}
+# Age à l'inclusion dans FREDD
+data2['leg_age_patientFREDD'] = (data2['leg_date_incFREDD'] - data2['adm_date_naissance']).dt.days / 365.25
+
+# Age au moment du dernier compte rendu génétique (juste patients ayant statut confirmé)
+data2['age_diagnostic'] = (data2['diaGen_CR_date'] - data2['adm_date_naissance']).dt.days / 365.25
+```
+
+### 3.3 Patients n'ayant pas de date de naissance saisie
+
+```{python}
+data2[data2["adm_date_naissance"].isna()][
+                    ['adm_date_naissance', 
+                     'diaCli_stat_diag', 
+                     'diaCli_diagMR_nom', 
+                     'diaCli_diagMR_code']]
+```
+
+### 3.4 Aperçu des données administratives des patients
+
+```{python}
+#| ExecuteTime: {end_time: '2025-05-20T15:43:28.414996Z', start_time: '2025-05-20T15:43:28.159340Z'}
+import plotly.express as px
+
+fig = px.histogram(
+    data2,
+    x="leg_age_patientFREDD",
+    nbins=20,  
+    title='<b>Nombre de personnes par âge',
+    histfunc="count",
+    labels={"leg_age_patientFREDD": "Âge", "count": "Nombre de personnes"},
+)
+fig.update_traces(
+    texttemplate='%{y}',  
+    textposition='outside'
+)
+fig.update_layout(
+    xaxis_title="Âge",
+    yaxis_title="Nombre de personnes",
+    title_font_size=22
+)
+
+fig.show()
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2025-05-20T15:49:04.587846Z', start_time: '2025-05-20T15:49:04.552965Z'}
+mean_age = data2['leg_age_patientFREDD'].mean().round(0)
+print("Moyenne d'age: ", mean_age, "ans")
+```
+
+```{python}
+proportions = data2['adm_occupation'].value_counts().reset_index()
+proportions.columns = ['adm_occupation', 'proportion']
+totals_counts = proportions['proportion'].sum()
+proportions['Percentage'] = (proportions['proportion'] / totals_counts * 100).round(1)
+
+proportions['adm_occupation'] = proportions['adm_occupation'].astype(str)
+proportions['label'] = proportions['adm_occupation'].replace({'1.0': 'Salary', 
+                                                              '2.0': 'Retired',
+                                                              '3.0': 'Unemployed',
+                                                              '4.0': 'Student',
+                                                              '5.0': 'Children',
+                                                              '6.0': 'Unknown'})
+
+fig = px.pie(
+        proportions,
+        names='label',
+        values='proportion',
+        title=f" Occupation des patients",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='auto', textinfo='percent+label')
+
+fig.show()
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2025-05-20T15:44:10.344683Z', start_time: '2025-05-20T15:44:10.125333Z'}
+proportions = data2['adm_sexe'].value_counts().reset_index()
+proportions.columns = ['adm_sexe', 'proportion']
+totals_counts = proportions['proportion'].sum()
+proportions['Percentage'] = (proportions['proportion'] / totals_counts * 100).round(1)
+
+proportions['adm_sexe'] = proportions['adm_sexe'].astype(str)
+proportions['label'] = proportions['adm_sexe'].replace({'1': 'Male', '2': 'Female'})
+
+fig = px.pie(
+        proportions,
+        names='label',
+        values='proportion',
+        title=f"<b>Sexe des patients",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+
+fig.show()
+```
+
+### 3.5 Periode des premiers signes de la maladie
+
+```{python}
+counts = data2['his_age_psignes'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+totals_counts = counts['count'].sum()
+counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+counts['category'] = counts['category'].astype(str)
+counts['label'] = counts['category'].replace({'1': 'Anténatal',  
+                                              '2': 'A la naissance', 
+                                              '3': 'Post natal',
+                                              '4': 'Non déterminé'})
+
+
+fig = px.pie(
+        counts,
+        names='label',
+        values='count',
+        title=f"<b>Periode des premiers sines de la maladie ",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='auto', textinfo='percent+label+value')
+
+fig.show()
+```
+
+### 3.6 Statut du diagnostique clinique
+
+```{python}
+counts = data2['diaCli_stat_diag'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+totals_counts = counts['count'].sum()
+counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+counts['category'] = counts['category'].astype(str)
+counts['label'] = counts['category'].replace({'2': 'Likely', '3': 'Confirmed', '4': 'Indeterminate'})
+
+
+fig = px.pie(
+        counts,
+        names='label',
+        values='count',
+        title=f"<b>Statut du diagnostique clinique",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='auto', textinfo='percent+label+value')
+
+fig.show()
+```
+
+#### 3.6.1 Patient n'ayant pas de diagnostic clinique
+
+```{python}
+data2[(data2['diaCli_diagMR_nom'].isna()) & (data2['diaCli_stat_diag'] != 4)][
+['adm_date_naissance', 'diaCli_stat_diag', 'diaCli_diagMR_nom', 'diaCli_diagMR_code']
+]
+```
+
+#### 3.6.2 Maladies répertoriées après le diagnostic clinique
+
+```{python}
+print(data2['diaCli_diagMR_nom'].value_counts().sum(), "patients ayant une maladie repertoriée ")
+```
+
+```{python}
+import plotly.express as px
+import pandas as pd
+
+diagnosis_counts = data2['diaCli_diagMR_nom'].value_counts(dropna=False).reset_index()
+diagnosis_counts.columns = ['Diagnosis', 'Number of cases']
+
+diagnosis_counts['Diagnosis'] = diagnosis_counts['Diagnosis'].fillna('Missing')
+
+
+total_cases = diagnosis_counts['Number of cases'].sum()
+diagnosis_counts['Percentage'] = (diagnosis_counts['Number of cases'] / total_cases * 100).round(1)
+
+fig = px.bar(
+    diagnosis_counts,
+    y='Diagnosis',
+    x='Number of cases',
+    color='Number of cases',
+    orientation='h',
+    color_continuous_scale='Plasma',
+    text='Number of cases',
+    title='<b>Répartition des maladies selon le diagnostic clinique</b>',
+    labels={'Number of cases': 'Nb cas', 'Diagnosis': 'Maladies'},
+    height=900
+)
+
+fig.update_layout(
+    yaxis={'categoryorder':'total ascending'}, 
+    plot_bgcolor='rgba(0,0,0,0)',
+    hovermode='y unified',
+    title_font={'size': 20},
+    uniformtext_minsize=8,
+    margin=dict(r=150),
+    bargap=0.1
+
+)
+
+fig.update_traces(
+    texttemplate='<b>%{x}</b><br>(%{customdata[0]}%)',
+    hovertemplate="<b>%{y}</b><br>Cases: %{x}<br>Proportion: %{customdata[0]}%",
+    textposition='auto',
+    customdata=diagnosis_counts[['Percentage']]
+)
+
+fig.show()
+```
+
+#### 3.6.3 Patients ayant des signes cliniques
+
+```{python}
+counts = data2['diaCli_signes_assBoo'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+totals_counts = counts['count'].sum()
+counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+counts['category'] = counts['category'].astype(str)
+
+
+fig = px.pie(
+        counts,
+        names='category',
+        values='count',
+        title=f"<b>Nombre de Personne ayant des signes cliniques",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+
+fig.show()
+```
+
+#### 3.6.4 Proportion des patients ayant des signes cliniques associées aux maladies
+
+```{python}
+import plotly.express as px
+
+variables = [
+    ('diaCli_signes_ass1'),
+    ('diaCli_signes_ass2'),
+    ('diaCli_signes_ass3'),
+    ('diaCli_signes_ass4'),
+    ('diaCli_signes_ass5'),
+    ('diaCli_signes_ass6'),
+    ('diaCli_signes_ass7'),
+    ('diaCli_signes_ass8'),
+    ('diaCli_signes_ass9'),
+    ('diaCli_signes_ass10')
+]
+
+for col in variables:
+    counts = data2[col].value_counts(dropna=False).reset_index()
+    counts.columns = ['category', 'count']
+    totals_counts = counts['count'].sum()
+    counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+    counts['category'] = counts['category'].astype(str)
+    fig = px.bar(
+    counts,
+    x='category',
+    y='count',
+    color='count',
+    color_continuous_scale='Plasma',
+    text='count',
+    title=f"<b> Distribution du {col}",
+    labels={'count': 'Nb patients', 'category': ''},
+    height=900
+    )
+
+    fig.update_layout(
+    xaxis={'categoryorder':'total descending'},
+    plot_bgcolor='rgba(0,0,0,0)',
+    hovermode='x unified',
+    title_font={'size': 20},
+    uniformtext_minsize=8
+    )
+
+    fig.update_traces(
+    texttemplate='<b>%{y}</b><br>(%{customdata[0]}%)',
+    hovertemplate="<b>%{x}</b><br>Patients: %{y}<br>Proportion: %{customdata[0]}%",
+    textposition='outside',
+    customdata=counts[['Percentage']]
+    )
+
+    fig.show()
+```
+
+```{python}
+import pandas as pd
+from upsetplot import UpSet, from_indicators # type: ignore
+import matplotlib.pyplot as plt
+
+# Liste des colonnes représentant les signes cliniques
+variables = [
+    'diaCli_signes_ass1', 'diaCli_signes_ass2', 'diaCli_signes_ass3',
+    'diaCli_signes_ass4', 'diaCli_signes_ass5',
+    'diaCli_signes_ass6', 'diaCli_signes_ass7', 'diaCli_signes_ass8',
+    'diaCli_signes_ass9', 'diaCli_signes_ass10'
+]
+# Copie de data1 pour travailler proprement
+df = data2[variables].copy()
+
+# Remplacer les NaN par une valeur générique pour pouvoir encoder
+df= df.fillna('missing')
+# data1[col] = data1[col].fillna('missing')  # ✅ Plus sûr et propre
+
+# On crée une copie de data1 et on remplace les valeurs manquantes
+# df = data1[variables].fillna('missing').astype(str)
+
+# On extrait tous les signes cliniques uniques (hors 'missing')
+unique_signs = pd.unique(df.values.ravel())
+unique_signs = [sign for sign in unique_signs if sign != 'missing']
+
+# Création d'un DataFrame binaire : chaque signe devient une colonne
+binary_df = pd.DataFrame(False, index=df.index, columns=unique_signs)
+
+# On remplit le DataFrame : True si le patient présente le signe
+for sign in unique_signs:
+    binary_df[sign] = df.apply(lambda row: sign in row.values, axis=1)
+
+# Création des données pour l'UpSet plot
+upset_data = from_indicators(binary_df.columns, binary_df)
+
+# Affichage
+plt.figure(figsize=(14, 8))
+upset = UpSet(upset_data, subset_size='count', show_counts=True)
+upset.plot()
+plt.suptitle("Co-occurrence des signes cliniques chez les patients")
+# plt.tight_layout()
+plt.show()
+```
+
+#### 3.6.5 Investigation cliniques réalisées
+
+```{python}
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+variables = [
+    'diaCli_invesCli', 'diaCli_invesBio', 'diaCli_invesBiol', 'diaCli_invesIma',
+    'diaCli_invesExp', 'diaCli_invesAna', 'diaCli_invesGen', 'diaCli_invesERG', 'diaCli_invesAut'
+]
+
+fig = make_subplots(
+    rows=3, cols=3,
+    subplot_titles=variables,
+    specs=[[{"type": "domain"}]*3]*3
+)
+
+couleurs = {
+    '1': 'green',
+    '2': 'firebrick',
+    'nan': 'lightgrey',
+    'Genetic test' : 'royalblue',
+    'test de performance' : 'yellow',
+}
+
+for i, col in enumerate(variables):
+    counts = data2[col].value_counts(dropna=False).reset_index()
+    counts.columns = ['category', 'count']
+    totals_counts = counts['count'].sum()
+    counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+    counts['category'] = counts['category'].astype(str)
+    counts['label'] = counts['category'].replace({'1': 'Yes', '2': 'No', 'nan': 'Unknown'})
+
+    pie = go.Pie(
+        labels=counts['label'],
+        values=counts['count'],
+        marker_colors=[couleurs.get(x, 'grey') for x in counts['category']],
+        textinfo='percent+label+value',
+        showlegend=False  
+    )
+
+    row = i // 3 + 1
+    col_idx = i % 3 + 1
+    fig.add_trace(pie, row=row, col=col_idx)
+
+fig.update_layout(
+    height=700, width=800,
+    title_text="<b> Investigation cliniques réalisées"
+)
+fig.show()
+```
+
+### 3.7 Informations du test génétique
+
+#### 3.7.1 Listes des techniques pour le test génétique
+
+```{python}
+counts = data2['diaGen_liste_tec'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+totals_counts = counts['count'].sum()
+counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+counts['category'] = counts['category'].astype(str)
+counts['label'] = counts['category'].replace({'1.0': 'Séquençage SANGER simple', 
+                                              '2.0': 'Séquençage ciblé avec panel de 10-30 gènes', 
+                                              '5.0': 'PCR Quantitative', 
+                                              '6.0': 'Séquençage exome entier (WES)',
+                                              '7.0': 'Séquençage génome entier (WGS)', 
+                                              '9.0': 'Others',
+                                              'nan': 'Unknown'})
+
+
+fig = px.pie(
+        counts,
+        names='label',
+        values='count',
+        title=f"<b>Méthode utilisées pour le test génétique",
+        # pull=[0, 0, 0, 0.2, 0, 0],
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='auto', textinfo='percent+label+value')
+
+fig.show()
+```
+
+#### 3.7.2 Statut du dernier test genetique
+
+```{python}
+counts = data2['diaGen_statut_analyse'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+totals_counts = counts['count'].sum()
+counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+counts['category'] = counts['category'].astype(str)
+counts['label'] = counts['category'].replace({'1': 'En cours', 
+                                              '2': 'Terminé',
+                                              '3': 'Indéterminé'
+                                             })
+
+fig = px.pie(
+        counts,
+        names='label',
+        values='count',
+        title=f"<b>Statut du dernier test",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+
+fig.show()
+```
+
+#### 3.7.3 Patients n'ayant pas de date du dernier test avec le statut confirmé
+
+```{python}
+#| scrolled: true
+data2[(data2['diaGen_CR_date'].isna()) & (data2['diaGen_statut_analyse'] == 2)][
+['adm_date_naissance', 'diaGen_statut_analyse', 'diaGen_CR_date', 'diaGen_var_hgcn_1']]
+```
+
+#### 3.7.4 Proportions des Patients ayant 0, 1, 2 gènes
+
+```{python}
+counts = data2['diaGen_var_nbgene'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+totals_counts = counts['count'].sum()
+counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+counts['category'] = counts['category'].astype(str)
+counts['label'] = counts['category'].replace({'0' : '0 gene', '1' : '1 gene', '2' : '2 gene'})
+
+
+fig = px.pie(
+        counts,
+        names='label',
+        values='count',
+        title=f"<b> Nombre de patients ayant 0, 1, 2 gènes",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='auto', textinfo='percent+label+value')
+
+fig.show()
+```
+
+#### 3.7.5 Listes des Gènes repertoriés
+
+```{python}
+import plotly.express as px
+import pandas as pd
+
+diagnosis_counts = data2['diaGen_var_hgcn_1'].value_counts().reset_index()
+diagnosis_counts.columns = ['Diagnosis', 'Number of cases']
+
+total_patients = diagnosis_counts['Number of cases'].sum()
+diagnosis_counts['Percentage'] = (diagnosis_counts['Number of cases'] / total_patients * 100).round(1)
+
+fig = px.bar(
+    diagnosis_counts,
+    x='Diagnosis',
+    y='Number of cases',
+    color='Number of cases',
+    color_continuous_scale='Plasma',
+    text='Number of cases',  
+    title='<b>Distribution du nombre de gènes  diagnosis</b>',
+    labels={'Number of cases': 'Nb cases', 'Diagnosis': 'Genes'},
+    height=900
+)
+
+fig.update_layout(
+    xaxis={'categoryorder':'total descending'},
+    plot_bgcolor='rgba(0,0,0,0)',
+    hovermode='x unified',
+    title_font={'size': 20},
+    uniformtext_minsize=8
+)
+
+fig.update_traces(
+    texttemplate='<b>%{y}</b><br>(%{customdata[0]}%)',
+    hovertemplate="<b>%{x}</b><br>Cases: %{y}<br>Proportion: %{customdata[0]}%",
+    textposition='outside',
+    customdata=diagnosis_counts[['Percentage']]
+)
+
+fig.show()
+```
+
+####  3.7.6 Méthodes de transmission de gènes 
+
+```{python}
+counts = data2['diaGen_var_trans_1'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+totals_counts = counts['count'].sum()
+counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+counts['category'] = counts['category'].astype(str)
+counts['label'] = counts['category'].replace({'1.0': 'De novo', '2.0': 'Autosomique dominant', 
+                                              '3.0': 'Autosomique récessif', 'nan': 'Unknown'})
+
+
+fig = px.pie(
+        counts,
+        names='label',
+        values='count',
+        title=f"<b> Méthode de transmission",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+
+fig.show()
+```
+
+### 3.8 Correlation Genotype/Phenotype
+
+```{python}
+counts = data2['diaGen_corr'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+totals_counts = counts['count'].sum()
+counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+counts['category'] = counts['category'].astype(str)
+counts['label'] = counts['category'].replace({'1.0': 'Yes(classical case)',  
+                                              '0.0': 'No(atypic case) ', 
+                                              'nan': 'Unknown'})
+
+
+fig = px.pie(
+        counts,
+        names='label',
+        values='count',
+        title=f"<b>Correlation Genotype/Phenotype",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='inside', textinfo='percent+label')
+
+fig.show()
+```
+
+```{python}
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+pivot = data2.pivot_table(
+    index='diaCli_diagMR_nom',
+    columns='diaGen_var_hgcn_1',
+    aggfunc='size',
+    fill_value=0
+)
+
+plt.figure(figsize=(18, 10))
+sns.heatmap(pivot, cmap='YlGnBu', annot=True, fmt="d")
+plt.title("Fréquence des combinaisons Diagnostic - Gène")
+plt.ylabel("Diagnostic")
+plt.xlabel("Gène identifié")
+plt.tight_layout()
+plt.show()
+```
+
+### 3.9 Examen Acuité visuelle
+
+```{python}
+data2['exaAcu_type_examen_OD'].unique()
+```
+
+```{python}
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+variables = ['exaAcu_type_examen_OG', 'exaAcu_type_examen_OD']
+
+fig = make_subplots(
+    rows=1, cols=2,
+    subplot_titles=variables,
+    specs=[[{'type': 'domain'}, {'type': 'domain'}]]
+)
+
+for i, col in enumerate(variables):
+    counts = data2[col].value_counts(dropna=False).reset_index()
+    counts.columns = ['category', 'count']
+    totals_counts = counts['count'].sum()
+    counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+    counts['category'] = counts['category'].astype(str)
+    counts['label'] = counts['category'].replace({'1.0': 'Monoyer', '2.0': 'Pigassou',
+                                                  '3.0': 'Bébé vision', '4.0': 'Cardiff',
+                                                 '5.0': 'EDTRS','6.0' : 'Autre'})
+    pie = go.Pie(
+        labels=counts['label'],
+        values=counts['count'],
+        textinfo='percent+label',
+        showlegend=False  
+    )
+
+    row = 1
+    col_idx = i + 1
+    fig.add_trace(pie, row=row, col=col_idx)
+
+fig.update_layout(
+    height=450, width=850,
+    title_text="<b>Types d'examen pour la mesure de l'acuité visuelle</b>"
+)
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+
+fig.show()
+```
+
+### 3.10 Examen champ visuel
+
+```{python}
+proportions = data2['exaChv_fait'].value_counts().reset_index()
+proportions.columns = ['exaChv_fait', 'proportion']
+totals_counts = proportions['proportion'].sum()
+proportions['Percentage'] = (proportions['proportion'] / totals_counts * 100).round(1)
+
+proportions['exaChv_fait'] = proportions['exaChv_fait'].astype(str)
+proportions['label'] = proportions['exaChv_fait'].replace({'True': 'Oui', 'False': 'Non'})
+
+fig = px.pie(
+        proportions,
+        names='label',
+        values='proportion',
+        title=f"<b> Examen champ visuel réalisé",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+
+fig.show()
+```
+
+#### 3.10.1 Examen est-il interprétable ?
+
+```{python}
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+variables = ['exaChv_interpOG', 'exaChv_interpOD']
+
+fig = make_subplots(
+    rows=1, cols=2,
+    subplot_titles=variables,
+    specs=[[{'type': 'domain'}, {'type': 'domain'}]]
+)
+
+for i, col in enumerate(variables):
+    counts = data2[col].value_counts(dropna=False).reset_index()
+    counts.columns = ['category', 'count']
+    totals_counts = counts['count'].sum()
+    counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+    counts['category'] = counts['category'].astype(str)
+    counts['label'] = counts['category'].replace({'True': 'Oui', 'False': 'Non'})
+    pie = go.Pie(
+        labels=counts['label'],
+        values=counts['count'],
+        textinfo='percent+label',
+        showlegend=False  
+    )
+
+    row = 1
+    col_idx = i + 1
+    fig.add_trace(pie, row=row, col=col_idx)
+
+fig.update_layout(
+    height=350, width=800,
+    title_text="<b>Examen interpretable</b>"
+)
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+
+fig.show()
+```
+
+##### Incohérence avec le nombre d'examen réalisé
+
+#### 3.10.2 Type d'examen champ visuel réalisé
+
+```{python}
+data2['exaChv_type'].unique()
+```
+
+```{python}
+import plotly.express as px
+import pandas as pd
+
+proportions = data2['exaChv_type'].value_counts(dropna=False).reset_index()
+proportions.columns = ['exaChv_type', 'Number of cases']
+
+proportions['exaChv_type'] = proportions['exaChv_type'].fillna('Missing')
+proportions['label'] = proportions['exaChv_type'].replace({'1': 'Champs cinétiques (Goldmann)', 
+                    '2': 'Champs statiques','3': 'Micropérimétrie', '5': 'Autre ',
+                    '1, 2, 3': 'Champs cinétiques (Goldmann)<br>Champs statiques<br>Micropérimétrie',
+                    '1, 2': 'Champs cinétiques (Goldmann)<br>Champs statiques',
+                    '1, 3': 'Champs cinétiques (Goldmann)<br>Micropérimétrie',
+                    '1, 5': 'Champs cinétiques (Goldmann)<br>Autre',
+                    '2, 5': 'Champs statiques<br>Autre'})
+                                                           
+
+total_cases = proportions['Number of cases'].sum()
+proportions['Percentage'] = (proportions['Number of cases'] / total_cases * 100).round(1)
+
+fig = px.bar(
+    proportions,
+    y='label',
+    x='Number of cases',
+    color='Number of cases',
+    orientation='h',
+    color_continuous_scale='Plasma',
+    text='Number of cases',
+    title="<b>Type d'examen champ visuel réalisé</b>",
+    labels={'Number of cases': 'Nb cases', 'Diagnosis': 'Disease'},
+    height=900
+)
+
+fig.update_layout(
+    yaxis={'categoryorder':'total ascending'}, 
+    plot_bgcolor='rgba(0,0,0,0)',
+    hovermode='y unified',
+    title_font={'size': 20},
+    uniformtext_minsize=8
+
+)
+
+fig.update_traces(
+    texttemplate='<b>%{x}</b><br>(%{customdata[0]}%)',
+    hovertemplate="<b>%{y}</b><br>Cases: %{x}<br>Proportion: %{customdata[0]}%",
+    textposition='inside',
+    customdata=proportions[['Percentage']]
+)
+
+fig.show()
+```
+
+#### 3.10.3 Patient n'ayant pas de type d'examen
+
+```{python}
+data2[(data2["exaChv_fait"] == True) & (data2['exaChv_type'].isna())][
+                            ["leg_num_EpiGenRet", "exaChv_fait", 
+                             "adm_sexe", "exaChv_date", "exaChv_type"]]
+```
+
+#### 3.10.4 Examen réalisé avec isoptères
+
+```{python}
+data2["exaChv_isoptOD"].unique()
+```
+
+```{python}
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+variables = ['exaChv_isoptOG', 'exaChv_isoptOD']
+
+fig = make_subplots(
+    rows=1, cols=2,
+    subplot_titles=variables,
+    specs=[[{'type': 'domain'}, {'type': 'domain'}]]
+)
+
+for i, col in enumerate(variables):
+    counts = data2[col].value_counts(dropna=False).reset_index()
+    counts.columns = ['category', 'count']
+    totals_counts = counts['count'].sum()
+    counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+    counts['category'] = counts['category'].astype(str)
+    counts['label'] = counts['category'].replace({'0': 'Non', '1': 'Oui'})
+    pie = go.Pie(
+        labels=counts['label'],
+        values=counts['count'],
+        showlegend=True  
+    )
+
+    row = 1
+    col_idx = i + 1
+    fig.add_trace(pie, row=row, col=col_idx)
+
+fig.update_layout(
+    height=500, width=800,
+    title_text="<b>Examen réalisé avec isoptères V4e</b>"
+)
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+
+fig.show()
+```
+
+#### 3.10.5 Le champ visuel central est'il compromis ?
+
+```{python}
+data2["exaChv_cen_compOD"].unique()
+```
+
+```{python}
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+variables = ['exaChv_cen_compOG', 'exaChv_cen_compOD']
+
+fig = make_subplots(
+    rows=1, cols=2,
+    subplot_titles=variables,
+    specs=[[{'type': 'domain'}, {'type': 'domain'}]]
+)
+
+couleurs = {'0.0': 'red', '1.0': 'green'}
+
+for i, col in enumerate(variables):
+    counts = data2[col].value_counts(dropna=False).reset_index()
+    counts.columns = ['category', 'count']
+    totals_counts = counts['count'].sum()
+    counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+    counts['category'] = counts['category'].astype(str)
+    counts['label'] = counts['category'].replace({'0.0': 'Non', '1.0': 'Oui'})
+    counts['label'] = counts['label'].replace('nan', 'Missing')
+
+    
+    pie = go.Pie(
+        labels=counts['label'],
+        values=counts['count'],
+        showlegend=True,
+        marker_colors=[couleurs.get(x, 'goldenrod') for x in counts['category']]
+    )
+
+    row = 1
+    col_idx = i + 1
+    fig.add_trace(pie, row=row, col=col_idx)
+
+fig.update_layout(
+    height=450, width=850,
+    title_text="<b>Champ visuel central compromis</b>"
+)
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+
+fig.show()
+```
+
+#### 3.10.6 Champ visuel périphérique compromis ?
+
+```{python}
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+variables = ['exaChv_peri_compOG', 'exaChv_peri_compOD']
+
+fig = make_subplots(
+    rows=1, cols=2,
+    subplot_titles=variables,
+    specs=[[{'type': 'domain'}, {'type': 'domain'}]]
+)
+couleurs = {'0': 'red', '1': 'green'}
+
+for i, col in enumerate(variables):
+    counts = data2[col].value_counts(dropna=False).reset_index()
+    counts.columns = ['category', 'count']
+    totals_counts = counts['count'].sum()
+    counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+    counts['category'] = counts['category'].astype(str)
+    counts['label'] = counts['category'].replace({'0': 'Non', '1': 'Oui'})
+    counts['label'] = counts['label'].replace('nan', 'Missing')
+
+    
+    pie = go.Pie(
+        labels=counts['label'],
+        values=counts['count'],
+        showlegend=True,
+        marker_colors=[couleurs.get(x, 'goldenrod') for x in counts['category']]
+    )
+
+    row = 1
+    col_idx = i + 1
+    fig.add_trace(pie, row=row, col=col_idx)
+
+fig.update_layout(
+    height=450, width=850,
+    title_text="<b>Champ visuel périphérique compromis</b>"
+)
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+
+fig.show()
+```
+
+### 3.11 Présence ou non de la cataracte
+
+```{python}
+data2['hisPer_presence_cataOG'].unique()
+```
+
+```{python}
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+variables = ['hisPer_presence_cataOG', 'hisPer_presence_cataOD']
+
+fig = make_subplots(
+    rows=1, cols=2,
+    subplot_titles=variables,
+    specs=[[{'type': 'domain'}, {'type': 'domain'}]]
+)
+couleurs = {'0': 'red', '1': 'green', '2': 'blue'}
+
+for i, col in enumerate(variables):
+    counts = data2[col].value_counts(dropna=False).reset_index()
+    counts.columns = ['category', 'count']
+    totals_counts = counts['count'].sum()
+    counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+    counts['category'] = counts['category'].astype(str)
+    counts['label'] = counts['category'].replace({'0': 'Non', '1': 'Oui', 
+                                                  '2': 'Traitée par chirurgie'})
+    counts['label'] = counts['label'].replace('nan', 'Missing')
+
+    
+    pie = go.Pie(
+        labels=counts['label'],
+        values=counts['count'],
+        showlegend=True,
+        marker_colors=[couleurs.get(x, 'goldenrod') for x in counts['category']]
+
+    )
+
+    row = 1
+    col_idx = i + 1
+    fig.add_trace(pie, row=row, col=col_idx)
+
+fig.update_layout(
+    width=850,  
+    height=450,  
+    margin=dict(t=50, b=50, l=50, r=50),
+    title_text="<b>Présence ou non de la cataracte</b>"
+)
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+
+fig.show()
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2025-05-20T14:42:38.405465Z', start_time: '2025-05-20T14:42:38.326235Z'}
+# diaCli_signes_inhCode_item1 dans le data2
+# ici : dans le data1
+```
+
+## 4 Jointure des 2 dataFrames
+
+```{python}
+#| ExecuteTime: {end_time: '2025-05-20T15:46:50.541437Z', start_time: '2025-05-20T15:46:50.365880Z'}
+df_final = pd.concat([data1, data2], axis=0, ignore_index=True)
+```
+
+```{python}
+# Telechargement du fichier joint 
+# df_final.to_csv("fichier_joint.csv", sep=';', encoding='utf-8-sig', index=False)
+```
+
+```{python}
+df_final.shape
+```
+
+```{python}
+df_final.info()
+```
+
+### 4.1 Visualisation données démographiques
+
+```{python}
+import plotly.express as px
+
+fig = px.histogram(
+    df_final,
+    x="leg_age_patientFREDD",
+    nbins=20,
+    title='<b>Âge des patients',
+    labels={"leg_age_patientFREDD": "Âge", "count": "Nombre de patients"},
+    text_auto=True  
+)
+
+fig.update_layout(
+    xaxis_title="Âge",
+    yaxis_title="Nombre de patients",
+    title_font_size=22
+)
+
+fig.show()
+```
+
+```{python}
+print("Age moyen : ", df_final["leg_age_patientFREDD"].mean().round(), "ans")
+```
+
+```{python}
+proportions = df_final['adm_sexe'].value_counts(dropna=False).reset_index()
+proportions.columns = ['adm_sexe', 'proportion']
+totals_counts = proportions['proportion'].sum()
+proportions['Percentage'] = (proportions['proportion'] / totals_counts * 100).round(1)
+
+proportions['adm_sexe'] = proportions['adm_sexe'].astype(str)
+proportions['label'] = proportions['adm_sexe'].replace({'1': 'Homme', '2': 'Femme'})
+couleurs = [ 'pink', 'blue' ]
+fig = px.pie(
+        proportions,
+        names='label',
+        values='proportion',
+        title=f" <b>Sexe des patients",
+        # color_discrete_sequence=px.colors.qualitative.Bold,
+        color_discrete_sequence=couleurs,
+
+
+    )
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+fig.update_layout(
+    width=850,  
+    height=450,  
+    margin=dict(t=50, b=50, l=50, r=50)
+)
+fig.show()
+```
+
+### 4.2 Periode des premiers signes de la maladie
+
+```{python}
+counts = df_final['his_age_psignes'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+totals_counts = counts['count'].sum()
+counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+counts['category'] = counts['category'].astype(str)
+counts['label'] = counts['category'].replace({'1': 'Anténatal',  
+                                              '2': 'A la naissance', 
+                                              '3': 'Post natal',
+                                              '4': 'Non déterminé'})
+
+
+fig = px.pie(
+        counts,
+        names='label',
+        values='count',
+        title=f"<b>Periode des premiers sines de la maladie ",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='auto', textinfo='percent+label+value')
+
+fig.show()
+```
+
+### 4.3 Age au diagnostic clinique de la maladie
+
+```{python}
+counts = df_final['his_age_diagMR'].value_counts(dropna=False).reset_index()
+counts.columns = ['category', 'count']
+totals_counts = counts['count'].sum()
+counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+
+counts['category'] = counts['category'].astype(str)
+counts['label'] = counts['category'].replace({'1': 'Anténatal',  
+                                              '2': 'A la naissance', 
+                                              '3': 'Post natal',
+                                              '4': 'Post mortem',
+                                              '5': 'Non déterminé'})
+
+
+fig = px.pie(
+        counts,
+        names='label',
+        values='count',
+        title=f"<b>Age au diagnostic clinique de la maladie",
+        color_discrete_sequence=px.colors.qualitative.Bold
+
+    )
+fig.update_traces(textposition='auto', textinfo='percent+label+value')
+
+fig.show()
+```
+
+### 4.4 Présence ou non de la cataracte et statut du cristallin
+
+```{python}
+df_final['hisPer_presence_cataOG'].unique()
+```
+
+```{python}
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+variables = ['hisPer_presence_cataOD', 'hisPer_presence_cataOG']
+
+fig = make_subplots(
+    rows=1, cols=2,
+    subplot_titles=variables,
+    specs=[[{'type': 'domain'}, {'type': 'domain'}]]
+)
+
+couleurs = {
+    '0.0': 'green',
+    '1.0': 'red',
+    '2.0': 'yellow'   
+}
+
+for i, col in enumerate(variables):
+    counts = df_final[col].value_counts(dropna=False).reset_index()
+    counts.columns = ['category', 'count']
+    totals_counts = counts['count'].sum()
+    counts['Percentage'] = (counts['count'] / totals_counts * 100).round(1)
+    counts['category'] = counts['category'].astype(str)
+    counts['label'] = counts['category'].replace({'0.0': 'Yes', '1.0': 'No',
+                                                 '2.0' : 'Traitée par chirurgie'})
+    pie = go.Pie(
+        labels=counts['label'],
+        values=counts['count'],
+        marker_colors=[couleurs.get(x, 'grey') for x in counts['category']],
+        textinfo='percent+label',
+        showlegend=False  
+    )
+
+    row = 1
+    col_idx = i + 1
+    fig.add_trace(pie, row=row, col=col_idx)
+
+fig.update_layout(
+    height=500, width=800,
+    title_text="Presence of Cataract"
+)
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+
+fig.show()
+```
+
+```{python}
+
+# Étape 1 : Groupement par maladie et site
+df = df_final.copy()
+grouped = df.groupby(['leg_site_inc_nom', 'diaCli_diagMR_nom']).size().reset_index(name='count')
+
+# Étape 2 : Pour chaque site, regrouper les maladies < 10 en "Autres"
+def regrouper_maladies_rare(df_site):
+    df_site['maladie_affichée'] = df_site['diaCli_diagMR_nom']
+    rare_mask = df_site['count'] < 10
+    df_site.loc[rare_mask, 'maladie_affichée'] = 'Autres'
+    # Refaire l'agrégation
+    return df_site.groupby('maladie_affichée', as_index=False)['count'].sum()
+
+# Appliquer pour chaque site
+sites = grouped['leg_site_inc_nom'].unique()
+data_par_site = {site: regrouper_maladies_rare(grouped[grouped['leg_site_inc_nom'] == site]) for site in sites}
+
+# Étape 3 : Créer les camemberts côte à côte
+fig = make_subplots(rows=1, cols=len(sites), specs=[[{'type': 'domain'}]*len(sites)],
+                    subplot_titles=[f"Site : {site}" for site in sites])
+
+colors = ['#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FFA15A', '#19D3F3', '#FF6692', '#B6E880', '#FF97FF', '#FECB52']
+
+for i, site in enumerate(sites):
+    df_site = data_par_site[site]
+    fig.add_trace(
+        go.Pie(
+            labels=df_site['maladie_affichée'],
+            values=df_site['count'],
+            name=site,
+            textinfo='percent+label+value',
+            showlegend=False,
+            marker=dict(colors=colors)
+        ),
+        row=1, col=i+1
+    )
+
+fig.update_layout(
+    title_text="<b>Répartition des maladies par site (maladies <10 regroupées)</b>",
+    height=500,
+    width=900,
+    margin=dict(t=80, b=50)
+)
+
+fig.show()
+```
+
