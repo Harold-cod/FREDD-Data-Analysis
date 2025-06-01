@@ -4,10 +4,18 @@
 # Données volumineuses
 *.csv
 *.xlsx
+*.zip
+*.tar.gz
 
 # Fichiers générés automatiquement par Quarto ou d'autres outils
 *.html
 *.pdf
+*.docx
+*.log
+*.aux
+*.out
+*.toc
+*.gz
 *.tex
 project_Fredd_files/
 
@@ -18,3 +26,16 @@ venv/
 # Fichiers système (Windows/macOS)
 .DS_Store
 Thumbs.db
+
+# Cache Python
+__pycache__/
+*.py[cod]
+
+# Éditeurs
+.vscode/
+.Rproj.user/
+
+# Autres fichiers de sortie volumineux
+*.png
+*.svg
+*.jpeg
