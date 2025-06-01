@@ -1,0 +1,20 @@
+# Fichiers Jupyter Notebook temporaires
+.ipynb_checkpoints/
+
+# Données volumineuses
+*.csv
+*.xlsx
+
+# Fichiers générés automatiquement par Quarto ou d'autres outils
+*.html
+*.pdf
+*.tex
+project_Fredd_files/
+
+# Environnements virtuels Python
+env/
+venv/
+
+# Fichiers système (Windows/macOS)
+.DS_Store
+Thumbs.db
