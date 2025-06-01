@@ -5,3 +5,5 @@ seaborn
 plotly
 streamlit
 quarto
+upset
+upsetplot
